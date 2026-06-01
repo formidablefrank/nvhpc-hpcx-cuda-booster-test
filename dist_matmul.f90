@@ -38,7 +38,7 @@ program dist_matmul
    end if
 
    !! TODO should be divisible by size
-   N = 49152
+   N = 32768
    if (mod(N, size) /= 0) then
       if (rank == 0) print *, "N must be divisible by processes"
       call MPI_Abort(MPI_COMM_WORLD, 1, ierr)

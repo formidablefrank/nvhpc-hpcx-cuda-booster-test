@@ -136,3 +136,8 @@ Timings are reduced with `MPI_MAX` across ranks, so each value represents the sl
 - `N` must be divisible by the MPI world size.
 - The Fortran benchmark uses OpenACC `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for device-buffer communication.
 - If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
+
+## References
+- [NVIDIA HPC SDK 25.11 release notes](https://docs.nvidia.com/hpc-sdk/archive/25.11/pdf/hpc-sdk2511rn.pdf)
+- [Spack environments](https://spack.readthedocs.io/en/latest/environments.html)
+- [Programming for NVIDIA GPUs](https://www.nas.nasa.gov/hecc/support/kb/programming-for-nvidia-gpus_647.html)
