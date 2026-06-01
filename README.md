@@ -130,6 +130,32 @@ TIMING ranks=<n> init_s=<s> computation_s=<s> communication_s=<s> io_s=<s> valid
 
 Timings are reduced with `MPI_MAX` across ranks, so each value represents the slowest rank for that component. Communication time includes MPI post time and MPI wait time. Because communication is overlapped with GPU computation, the reported communication component is the exposed communication cost, not a fully non-overlapped transfer time.
 
+## Results Analysis
+
+The latest analyzed run is `logs/slurm-matmul-43839900.out`. Plots and parsed CSV files are available under `plots/`:
+
+- `plots/timing_components_baseline_vs_tuned.png` - per-component comparison for initialization, computation, communication, I/O, validation, and total time.
+- `plots/timing_total_baseline_vs_tuned.png` - total runtime plus tuned speedup over baseline.
+- `plots/timing_baseline_vs_tuned.csv` - parsed component timings.
+- `plots/timing_total_summary.csv` - total runtime and speedup summary.
+
+Total runtime from this run:
+
+| Nodes | Ranks | Baseline total (s) | Tuned total (s) | Baseline / tuned |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 4 | 59.154 | 55.188 | 1.07x |
+| 2 | 8 | 36.268 | 32.103 | 1.13x |
+| 4 | 16 | 20.166 | 17.932 | 1.12x |
+| 8 | 32 | 11.478 | 11.727 | 0.98x |
+
+The tuned configuration improves total time on 1, 2, and 4 nodes, with the strongest gain around 2-4 nodes. The dominant improvement is I/O time: tuned I/O drops from 9.06 s to 5.15 s on 1 node, from 10.59 s to 6.35 s on 2 nodes, and from 6.87 s to 4.57 s on 4 nodes. Computation time is essentially unchanged between baseline and tuned runs because both modes execute the same GPU kernels with the same rank count and problem decomposition.
+
+At 8 nodes, tuned total time is slightly worse in this sample. The main reason is that tuned I/O is not better at this scale in the latest run (4.57 s tuned vs 4.39 s baseline), while exposed communication is also higher (0.709 s tuned vs 0.617 s baseline). This difference is small compared with the full runtime and should be interpreted as one-run variability unless repeated measurements show the same trend.
+
+The communication component is not a pure network bandwidth measurement. The code posts nonblocking MPI receives/sends, launches the OpenACC kernel, waits for the GPU computation, and then waits for MPI. Therefore `communication_s` mostly measures MPI posting plus residual wait time after computation overlap. A tuned run can show slightly higher `communication_s` while still being faster overall if computation finishes earlier, overlap changes, or I/O improves enough to dominate the total runtime. For a clean communication-only comparison, add a separate benchmark mode that times the device-buffer ring exchange without the matrix kernel and HDF5 write, or disable overlap by waiting for MPI before launching computation.
+
+Validation in the latest run reports relative errors around `1e-14` to `1e-13`, which is consistent with double-precision roundoff for results with magnitude near `1e18`. The nonzero absolute errors are expected at this scale and should be judged using `max_rel_error`, not only `max_abs_error`.
+
 ## Notes
 
 - The benchmark currently uses `N = 32768` in `dist_matmul.f90`; memory use is high and the Slurm scripts request exclusive GPU nodes.
