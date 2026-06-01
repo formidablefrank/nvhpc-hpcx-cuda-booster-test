@@ -1,0 +1,5 @@
+*.x
+*.h5
+.vscode
+**/.spack-env
+logs/

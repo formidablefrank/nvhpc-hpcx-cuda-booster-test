@@ -1,0 +1,9 @@
+mode,nodes,ranks,output,timing_ranks,init_s,computation_s,communication_s,io_s,validation_s,total_s
+baseline,1,4,C_dist_baseline_1nodes_4ranks.h5,4,2.918928,46.622835,0.145745,9.057633,0.256656,59.153738
+tuned,1,4,C_dist_tuned_1nodes_4ranks.h5,4,2.87695,46.625453,0.115074,5.152908,0.256178,55.188459
+baseline,2,8,C_dist_baseline_2nodes_8ranks.h5,8,1.566363,23.297382,0.626393,10.586029,0.128636,36.267762
+tuned,2,8,C_dist_tuned_2nodes_8ranks.h5,8,1.566896,23.295851,0.70916,6.347933,0.128787,32.103474
+baseline,4,16,C_dist_baseline_4nodes_16ranks.h5,16,0.882441,11.688556,0.637122,6.867374,0.06537,20.16632
+tuned,4,16,C_dist_tuned_4nodes_16ranks.h5,16,0.889515,11.688402,0.703068,4.567986,0.064913,17.932168
+baseline,8,32,C_dist_baseline_8nodes_32ranks.h5,32,0.551512,5.864325,0.617027,4.393293,0.033165,11.477958
+tuned,8,32,C_dist_tuned_8nodes_32ranks.h5,32,0.554182,5.863404,0.7089,4.570937,0.032669,11.726776
