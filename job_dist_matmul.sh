@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:4
 #SBATCH --mem=490000MB
-#SBATCH --mem-bind=local
-#SBATCH --distribution=block:block
+##SBATCH --mem-bind=local             equivalent to numactl --localalloc in the job steps below
+##SBATCH --distribution=block:block   equivalent to --map-by ppr:4:node in the mpirun below
 #SBATCH --exclusive
 #SBATCH --account=ICT26_MHPC_0
 #SBATCH --partition=boost_usr_prod
@@ -39,6 +39,8 @@ export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
 export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
 export UCX_RNDV_THRESH="${UCX_RNDV_THRESH:-8192}"
 
+# place 4 ranks per node and give each rank 8 processing elements
+# then binds those ranks to cores 
 tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8)
 if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
   tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
@@ -54,6 +56,7 @@ run_case() {
   if [[ "${mode}" == "tuned" ]]; then
     MATMUL_BINDER_MODE=tuned \
       "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" "${tuned_mpirun_args[@]}" \
+        numactl --localalloc \
         "${repo_root}/binder.sh" \
         "${repo_root}/dist_matmul.x" \
         "${output_file}"
@@ -68,7 +71,7 @@ run_case() {
 }
 
 echo "Running scaling analysis: baseline defaults vs tuned UCX/MPI/NUMA mapping..."
-tasks_per_node=4
+tasks_per_node="${SLURM_NTASKS_PER_NODE:-4}"
 for nodes in 1 2 4 8; do
   ranks=$((nodes * tasks_per_node))
   run_case baseline "${nodes}" "${ranks}"
