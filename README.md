@@ -6,6 +6,8 @@ This repository contains CUDA-aware MPI experiments for Leonardo Booster nodes. 
 
 - `dist_matmul.f90` - distributed matrix multiplication benchmark. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, writes a parallel HDF5 file, and prints timing for initialization, computation, communication, I/O, validation, and total runtime.
 - `job_dist_matmul.sh` - Slurm batch script for building `dist_matmul.f90` and running scaling tests on 1, 2, 4, and 8 nodes. Each scale point is run twice: baseline and tuned.
+- `dist_matmul_stdpar.f90` - experimental Fortran `do concurrent`/NVHPC stdpar version of the matrix multiplication benchmark. It uses managed memory semantics instead of explicit OpenACC data regions and `host_data` device pointers.
+- `job_dist_matmul_stdpar.sh` - Slurm batch script for building and running the stdpar variant with the same baseline/tuned scaling structure.
 - `binder.sh` - per-rank GPU and UCX device binding helper. In baseline mode it only assigns one GPU per local rank. In tuned mode it also pins each local rank to a matching UCX network device.
 - `hpcx-only-env.sh` - loads the NVHPC/HPC-X module and exposes the Spack-built CUDA, NCCL, HDF5, NetCDF, and PnetCDF prefixes.
 - `build-hpcx-only-env.sh` - concretizes and installs the Spack environment in `env-nvhpc-hpcx/`.
@@ -74,6 +76,20 @@ Submit the Slurm job:
 sbatch job_dist_matmul.sh
 ```
 
+To run the experimental stdpar variant instead:
+
+```bash
+sbatch job_dist_matmul_stdpar.sh
+```
+
+The stdpar script compiles with:
+
+```bash
+-stdpar=gpu -gpu=cc80,mem:managed
+```
+
+This variant uses `do concurrent` for GPU-parallel initialization, matrix multiplication, and block-copy loops. It does not use OpenACC `host_data use_device`, so MPI sees managed Fortran arrays rather than explicit OpenACC device pointers. Treat it as a portability and programming-model comparison against the OpenACC CUDA-aware MPI version, not as a guaranteed faster replacement.
+
 The job requests 8 nodes and runs these scale points:
 
 ```text
@@ -122,6 +138,16 @@ C_dist_baseline_8nodes_32ranks.h5
 C_dist_tuned_8nodes_32ranks.h5
 ```
 
+The stdpar script writes similarly named files with a `C_dist_stdpar_` prefix:
+
+```text
+C_dist_stdpar_baseline_1nodes_4ranks.h5
+C_dist_stdpar_tuned_1nodes_4ranks.h5
+...
+C_dist_stdpar_baseline_8nodes_32ranks.h5
+C_dist_stdpar_tuned_8nodes_32ranks.h5
+```
+
 The timing line has this format:
 
 ```text
@@ -160,7 +186,8 @@ Validation in the latest run reports relative errors around `1e-14` to `1e-13`, 
 
 - The benchmark currently uses `N = 32768` in `dist_matmul.f90`; memory use is high and the Slurm scripts request exclusive GPU nodes.
 - `N` must be divisible by the MPI world size.
-- The Fortran benchmark uses OpenACC `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for device-buffer communication.
+- The OpenACC benchmark uses `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for explicit device-buffer communication.
+- The stdpar benchmark relies on NVHPC managed memory behavior for MPI/HDF5 visibility. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
 - If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
 
 ## References
