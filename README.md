@@ -21,8 +21,8 @@ The benchmark assumes the following software stack built using Spack:
 - NVHPC 25.11 (external module)
 - HPC-X 2.20 (external module)
 - CUDA 12.2.2 from the Spack environment (compatible with NVIDIA-SMI 535.274.02, Driver Version: 535.274.02, CUDA Version: 12.2)
-- HDF5 and NetCDF-C/Fortran built with MPI from HPC-X and Fortran from NVHPC
-- NCCL and CUDNN (optional)
+- NCCL and CUDNN
+- HDF5 and NetCDF-C/Fortran and Parallel NetCDF
 
 <!--The current NetCDF-C build is MPI-enabled but not pthread-backed async:
 
@@ -31,6 +31,46 @@ The benchmark assumes the following software stack built using Spack:
 - `--has-parallel -> yes`
 - `--has-pnetcdf -> no`
 - HDF5 has `threadsafe=false`-->
+
+Dependency graph:
+
+```
+                        +----------------------------+
+                        |   nvhpc@25.11 (Compiler)   |
+                        +--------------+-------------+
+                                       |
+       +-------------------------------+-------------------------------+
+       |                                                               |
+       |  [ CUDA Branch ]                                              |  [ MPI / NetCDF Branch ]
+       |                                                               |
+       |       +-------------------+                                   |       +--------------------+
+       |       |    cuda@12.2.2    |                                   |       |   hpcx-mpi@2.20    |
+       |       +---------+---------+                                   |       +-------+---+--------+
+       |                 |                                             |               |   |
+       v                 v                                             v               v   v
+     +-------------------+                                           +-------------------+ |
+     |   nccl@2.22.3-1   | <─────────────────────────────────────────|    hdf5@1.14.3    | |
+     +-------------------+                                           +--------+----------+ |
+                                                                              |            |
+     +-------------------+                                                    |            |
+     |  cudnn@9.2.0.82-12| <──────────────────────────────────────────────────┼────────────+
+     +-------------------+                                                    |            |
+                                                                              v            v
+                                                                     +-------------------+ |
+                                                                     |  netcdf-c@4.9.2   | |
+                                                                     +--------+----------+ |
+                                                                              |            |
+                                                                              v            v
+                                                                     +-------------------------+
+                                                                     |  netcdf-fortran@4.6.1   |
+                                                                     +-------------------------+
+
+                                                                     +-------------------------+
+                                                                     | parallel-netcdf@1.12.3  |
+                                                                     +-------------------------+
+                                                                     (Fed by nvhpc & hpcx-mpi)
+```
+
 
 ## Build the Spack Environment
 
