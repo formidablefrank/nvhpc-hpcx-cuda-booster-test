@@ -25,7 +25,7 @@ mkdir -p logs
 source "${repo_root}/hpcx-only-env.sh"
 
 echo "Compiling..."
-"${HPCX_MPI_HOME}/bin/mpif90" -O3 -acc -gpu=cc80 -Minfo=accel \
+"${HPCX_MPI_HOME}/bin/mpif90" -O1 -acc -gpu=cc80 -Minfo=accel \
   -I"${HDF5_HOME}/include" \
   -L"${HDF5_HOME}/lib" \
   dist_matmul.f90 -o dist_matmul.x \
@@ -61,7 +61,7 @@ run_case() {
         "${repo_root}/dist_matmul.x" \
         "${output_file}"
   else
-    env -u UCX_TLS -u UCX_NET_DEVICES -u OMPI_MCA_pml -u OMPI_MCA_osc -u PMIX_MCA_gds -u UCX_RNDV_THRESH \
+    env -u UCX_NET_DEVICES -u UCX_RNDV_THRESH \
       MATMUL_BINDER_MODE=baseline \
       "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
         "${repo_root}/binder.sh" \

@@ -25,7 +25,7 @@ mkdir -p logs
 source "${repo_root}/hpcx-only-env.sh"
 
 echo "Compiling stdpar variant..."
-"${HPCX_MPI_HOME}/bin/mpif90" -O3 -stdpar=gpu -gpu=cc80,mem:managed -Minfo=stdpar \
+"${HPCX_MPI_HOME}/bin/mpif90" -O1 -stdpar=gpu -gpu=cc80,mem:separate -Minfo=stdpar \
   -I"${HDF5_HOME}/include" \
   -L"${HDF5_HOME}/lib" \
   dist_matmul_stdpar.f90 -o dist_matmul_stdpar.x \
@@ -39,6 +39,8 @@ export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
 export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
 export UCX_RNDV_THRESH="${UCX_RNDV_THRESH:-8192}"
 
+# place 4 ranks per node and give each rank 8 processing elements
+# then binds those ranks to cores 
 tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8)
 if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
   tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
@@ -59,7 +61,7 @@ run_case() {
         "${repo_root}/dist_matmul_stdpar.x" \
         "${output_file}"
   else
-    env -u UCX_TLS -u UCX_NET_DEVICES -u OMPI_MCA_pml -u OMPI_MCA_osc -u PMIX_MCA_gds -u UCX_RNDV_THRESH \
+    env -u UCX_NET_DEVICES -u UCX_RNDV_THRESH \
       MATMUL_BINDER_MODE=baseline \
       "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
         "${repo_root}/binder.sh" \

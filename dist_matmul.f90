@@ -38,7 +38,7 @@ program dist_matmul
    end if
 
    ! TODO should be divisible by size
-   N = 65536
+   N = 32768
    if (mod(N, size) /= 0) then
       if (rank == 0) print *, "N must be divisible by processes"
       call MPI_Abort(MPI_COMM_WORLD, 1, ierr)
@@ -52,8 +52,8 @@ program dist_matmul
    ! A_curr initially corresponds to columns p*M+1 to (p+1)*M
    do j = 1, M
       do i = 1, N
-         A_curr(i, j) = real(i + (p*M + j), 8)
-         B_loc(i, j) = real(i * (p*M + j), 8)
+         A_curr(i, j) = real(i, 8) + real(p*M + j, 8)
+         B_loc(i, j) = real(i, 8) * real(p*M + j, 8)
          C_loc(i, j) = 0.0d0
       end do
    end do
@@ -134,26 +134,26 @@ program dist_matmul
    max_rel_diff = 0.0d0
    max_expected_abs = 0.0d0
 
-   ! do j = 1, M
-   !    do i = 1, N
-   !       expected = real(p*M + j, 8) * (real(i,8) * S1 + S2)
-   !       diff = abs(C_loc(i, j) - expected)
-   !       rel_diff = diff / max(abs(expected), 1.0d0)
-   !       if (diff > max_diff) max_diff = diff
-   !       if (rel_diff > max_rel_diff) max_rel_diff = rel_diff
-   !       if (abs(expected) > max_expected_abs) max_expected_abs = abs(expected)
-   !    end do
-   ! end do
+   do j = 1, M
+      do i = 1, N
+         expected = real(p*M + j, 8) * (real(i,8) * S1 + S2)
+         diff = abs(C_loc(i, j) - expected)
+         rel_diff = diff / max(abs(expected), 1.0d0)
+         if (diff > max_diff) max_diff = diff
+         if (rel_diff > max_rel_diff) max_rel_diff = rel_diff
+         if (abs(expected) > max_expected_abs) max_expected_abs = abs(expected)
+      end do
+   end do
 
    validation_time = MPI_Wtime() - validation_start
-   ! call MPI_Reduce(max_diff, global_max_diff, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
-   ! call MPI_Reduce(max_rel_diff, global_max_rel_diff, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
-   ! call MPI_Reduce(max_expected_abs, global_max_expected_abs, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
+   call MPI_Reduce(max_diff, global_max_diff, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
+   call MPI_Reduce(max_rel_diff, global_max_rel_diff, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
+   call MPI_Reduce(max_expected_abs, global_max_expected_abs, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, MPI_COMM_WORLD, ierr)
 
-   ! if (rank == 0) then
-   !    write(*,'("VALIDATION max_abs_error=", ES12.5, " max_rel_error=", ES12.5, &
-   !    &" max_abs_expected=", ES12.5)') global_max_diff, global_max_rel_diff, global_max_expected_abs
-   ! end if
+   if (rank == 0) then
+      write(*,'("VALIDATION max_abs_error=", ES12.5, " max_rel_error=", ES12.5, &
+      &" max_abs_expected=", ES12.5)') global_max_diff, global_max_rel_diff, global_max_expected_abs
+   end if
 
    ! Parallel HDF5 Write
    io_start = MPI_Wtime()

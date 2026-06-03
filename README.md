@@ -6,7 +6,7 @@ This repository contains benchmarking experiments for Leonardo Booster nodes. It
 
 - `dist_matmul.f90` - distributed matrix multiplication benchmark program. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, and writes an HDF5 file in parallel. It also prints timing for initialization, computation, communication, I/O, error validation, and total runtime.
 - `job_dist_matmul.sh` - Slurm batch script for building `dist_matmul.f90` and running scaling tests on 1, 2, 4, and 8 nodes.
-- `dist_matmul_stdpar.f90` - NVHPC stdpar `do concurrent` version of the benchmark. It uses managed memory instead of explicit OpenACC data regions and `host_data` device pointers.
+- `dist_matmul_stdpar.f90` - NVHPC stdpar `do concurrent` version of the benchmark. It uses separate-memory stdpar offload instead of explicit OpenACC data regions and `host_data` device pointers.
 - `job_dist_matmul_stdpar.sh` - Slurm batch script for building and running the stdpar version.
 - `binder.sh` - per-rank GPU and UCX device binding helper. In baseline mode it only assigns one GPU per local rank. In tuned mode it also pins each local rank to a matching UCX network device.
 - `hpcx-only-env.sh` - loads the NVHPC/HPC-X module and exposes the Spack-built CUDA, NCCL, HDF5, NetCDF, and PnetCDF prefixes.
@@ -71,14 +71,14 @@ The Slurm script compiles the program before running it so you don't need to do 
 For stdpar variant, the command is:
 
 ```bash
-"${HPCX_MPI_HOME}/bin/mpif90" -O3 -stdpar=gpu -gpu=cc80,mem:managed -Minfo=stdpar \
+"${HPCX_MPI_HOME}/bin/mpif90" -O3 -stdpar=gpu -gpu=cc80,mem:separate -Minfo=stdpar \
   -I"${HDF5_HOME}/include" \
   -L"${HDF5_HOME}/lib" \
   dist_matmul_stdpar.f90 -o dist_matmul_stdpar.x \
   -lhdf5_fortran -lhdf5
 ```
 
-This variant uses `do concurrent` for parallel initialization, matrix multiplication, and block-copy loops offloaded to GPU. It does not use `host_data use_device` directives, so MPI sees managed Fortran arrays rather than explicit OpenACC device pointers. Treat it as a portability and programming-model comparison against the OpenACC CUDA-aware MPI version, not as a guaranteed faster replacement.
+This variant uses `do concurrent` for parallel initialization, matrix multiplication, and block-copy loops offloaded to GPU. It does not use `host_data use_device` directives, so MPI sees ordinary host Fortran arrays with compiler-managed device copies rather than explicit OpenACC device pointers. Treat it as a portability and programming-model comparison against the OpenACC CUDA-aware MPI version, not as a guaranteed faster replacement.
 
 ## Run the Scaling Benchmark
 
@@ -105,7 +105,7 @@ The job requests 8 nodes and runs each scaling point:
 
 Each point is run in two modes:
 
-- `baseline` - no explicit MPI binding/mapping, no `UCX_NET_DEVICES`, no `UCX_TLS`, no `OMPI_MCA_pml`, no `OMPI_MCA_osc`, no `UCX_RNDV_THRESH`, and no `PMIX_MCA_gds` tuning. `binder.sh` still assigns `CUDA_VISIBLE_DEVICES` by local rank so ranks use separate GPUs.
+- `baseline` - no explicit MPI binding/mapping, no per-rank `UCX_NET_DEVICES`, no `UCX_RNDV_THRESH`, and no `numactl --localalloc`. It still keeps the CUDA-aware MPI requirements (`OMPI_MCA_pml=ucx`, `OMPI_MCA_osc=ucx`, and `UCX_TLS` with CUDA transports), because the OpenACC code passes device pointers to MPI. `binder.sh` still assigns `CUDA_VISIBLE_DEVICES` by local rank so ranks use separate GPUs.
 - `tuned` - uses `--bind-to core --map-by ppr:4:node:PE=8`, environment UCX/Open MPI settings mentioned above, and  `UCX_NET_DEVICES` and GPU binding per local rank from `binder.sh`.
 
 Set `REPORT_BINDINGS=1` to include Open MPI binding reports:
@@ -180,7 +180,7 @@ Total runtime from this run:
 | 4 | 16 | 20.166 | 17.932 | 1.12x |
 | 8 | 32 | 11.478 | 11.727 | 0.98x |
 
-The tuned configuration improves total time on 1, 2, and 4 nodes, with the strongest gain around 2-4 nodes.
+In the analyzed run, the tuned configuration improves total time on 1, 2, and 4 nodes, with the strongest gain around 2-4 nodes.
 
 ![timing](plots/timing_components_baseline_vs_tuned.png)
 
@@ -197,8 +197,9 @@ Relative errors are around `1e-14` to `1e-13`, which is consistent with double-p
 - The benchmark currently uses `N = 65536` in `dist_matmul.f90` with error validation disabled. Memory use is high and the Slurm scripts request exclusive GPU nodes.
 - `N` must be divisible by the MPI world size.
 - The OpenACC benchmark uses `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for explicit device-buffer communication.
-- The stdpar benchmark relies on NVHPC managed memory behavior for MPI/HDF5 visibility. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
+- The stdpar benchmark uses NVHPC separate-memory behavior so MPI/HDF5 operate on host arrays while stdpar kernels use compiler-managed device copies. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
 - If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
+- The batch scripts set `OMPI_MCA_fcoll=^vulcan` to avoid an Open MPI OMPIO `vulcan` file-collective crash observed during parallel HDF5 writes.
 
 ## References
 - [NVIDIA HPC SDK 25.11 release notes](https://docs.nvidia.com/hpc-sdk/archive/25.11/pdf/hpc-sdk2511rn.pdf)
