@@ -18,11 +18,11 @@ This repository contains CUDA-aware MPI experiments for Leonardo Booster nodes. 
 
 The scripts assume the following software stack built using Spack:
 
-- NVHPC 25.11
-- HPC-X 2.20
+- NVHPC 25.11 (external module)
+- HPC-X 2.20 (external module)
 - CUDA 12.2.2 from the Spack environment (compatible with NVIDIA-SMI 535.274.02, Driver Version: 535.274.02, CUDA Version: 12.2)
-- NCCL
-- HDF5 and NetCDF-C/Fortran built with MPI (HPC-X) and Fortran (NVHPC)
+- NCCL and CUDNN
+- HDF5 and NetCDF-C/Fortran and Parallel NetCDF
 
 <!--The current NetCDF-C build is MPI-enabled but not pthread-backed async:
 
@@ -31,6 +31,46 @@ The scripts assume the following software stack built using Spack:
 - `--has-parallel -> yes`
 - `--has-pnetcdf -> no`
 - HDF5 has `threadsafe=false`-->
+
+Dependency graph:
+
+```
++----------------------------+
+                        |   nvhpc@25.11 (Compiler)   |
+                        +--------------+-------------+
+                                       |
+       +-------------------------------+-------------------------------+
+       |                                                               |
+       |  [ CUDA Branch ]                                              |  [ MPI / NetCDF Branch ]
+       |                                                               |
+       |       +-------------------+                                   |       +--------------------+
+       |       |    cuda@12.2.2    |                                   |       |   hpcx-mpi@2.20    |
+       |       +---------+---------+                                   |       +-------+---+--------+
+       |                 |                                             |               |   |
+       v                 v                                             v               v   v
+     +-------------------+                                           +-------------------+ |
+     |   nccl@2.22.3-1   | <─────────────────────────────────────────|    hdf5@1.14.3    | |
+     +-------------------+                                           +--------+----------+ |
+                                                                              |            |
+     +-------------------+                                                    |            |
+     |  cudnn@9.2.0.82-12| <──────────────────────────────────────────────────┼────────────+
+     +-------------------+                                                    |            |
+                                                                              v            v
+                                                                     +-------------------+ |
+                                                                     |  netcdf-c@4.9.2   | |
+                                                                     +--------+----------+ |
+                                                                              |            |
+                                                                              v            v
+                                                                     +-------------------------+
+                                                                     |  netcdf-fortran@4.6.1   |
+                                                                     +-------------------------+
+
+                                                                     +-------------------------+
+                                                                     | parallel-netcdf@1.12.3  |
+                                                                     +-------------------------+
+                                                                     (Fed by nvhpc & hpcx-mpi)
+```
+
 
 ## Build the Spack Environment
 
@@ -189,47 +229,6 @@ Validation in the latest run reports relative errors around `1e-14` to `1e-13`, 
 - The OpenACC benchmark uses `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for explicit device-buffer communication.
 - The stdpar benchmark relies on NVHPC managed memory behavior for MPI/HDF5 visibility. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
 - If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
-
-## Software stack
-
-Dependency graph
-
-```
-+----------------------------+
-                        |   nvhpc@25.11 (Compiler)   |
-                        +--------------+-------------+
-                                       |
-       +-------------------------------+-------------------------------+
-       |                                                               |
-       |  [ CUDA Branch ]                                              |  [ MPI / NetCDF Branch ]
-       |                                                               |
-       |       +-------------------+                                   |       +--------------------+
-       |       |    cuda@12.2.2    |                                   |       |   hpcx-mpi@2.20    |
-       |       +---------+---------+                                   |       +-------+---+--------+
-       |                 |                                             |               |   |
-       v                 v                                             v               v   v
-     +-------------------+                                           +-------------------+ |
-     |   nccl@2.22.3-1   | <─────────────────────────────────────────|    hdf5@1.14.3    | |
-     +-------------------+                                           +--------+----------+ |
-                                                                              |            |
-     +-------------------+                                                    |            |
-     |  cudnn@9.2.0.82-12| <──────────────────────────────────────────────────┼────────────+
-     +-------------------+                                                    |            |
-                                                                              v            v
-                                                                     +-------------------+ |
-                                                                     |  netcdf-c@4.9.2   | |
-                                                                     +--------+----------+ |
-                                                                              |            |
-                                                                              v            v
-                                                                     +-------------------------+
-                                                                     |  netcdf-fortran@4.6.1   |
-                                                                     +-------------------------+
-
-                                                                     +-------------------------+
-                                                                     | parallel-netcdf@1.12.3  |
-                                                                     +-------------------------+
-                                                                     (Fed by nvhpc & hpcx-mpi)
-```
 
 ## References
 - [NVIDIA HPC SDK 25.11 release notes](https://docs.nvidia.com/hpc-sdk/archive/25.11/pdf/hpc-sdk2511rn.pdf)
