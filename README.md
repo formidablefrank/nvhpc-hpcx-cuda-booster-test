@@ -190,6 +190,47 @@ Validation in the latest run reports relative errors around `1e-14` to `1e-13`, 
 - The stdpar benchmark relies on NVHPC managed memory behavior for MPI/HDF5 visibility. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
 - If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
 
+## Software stack
+
+Dependency graph
+
+```
++----------------------------+
+                        |   nvhpc@25.11 (Compiler)   |
+                        +--------------+-------------+
+                                       |
+       +-------------------------------+-------------------------------+
+       |                                                               |
+       |  [ CUDA Branch ]                                              |  [ MPI / NetCDF Branch ]
+       |                                                               |
+       |       +-------------------+                                   |       +--------------------+
+       |       |    cuda@12.2.2    |                                   |       |   hpcx-mpi@2.20    |
+       |       +---------+---------+                                   |       +-------+---+--------+
+       |                 |                                             |               |   |
+       v                 v                                             v               v   v
+     +-------------------+                                           +-------------------+ |
+     |   nccl@2.22.3-1   | <─────────────────────────────────────────|    hdf5@1.14.3    | |
+     +-------------------+                                           +--------+----------+ |
+                                                                              |            |
+     +-------------------+                                                    |            |
+     |  cudnn@9.2.0.82-12| <──────────────────────────────────────────────────┼────────────+
+     +-------------------+                                                    |            |
+                                                                              v            v
+                                                                     +-------------------+ |
+                                                                     |  netcdf-c@4.9.2   | |
+                                                                     +--------+----------+ |
+                                                                              |            |
+                                                                              v            v
+                                                                     +-------------------------+
+                                                                     |  netcdf-fortran@4.6.1   |
+                                                                     +-------------------------+
+
+                                                                     +-------------------------+
+                                                                     | parallel-netcdf@1.12.3  |
+                                                                     +-------------------------+
+                                                                     (Fed by nvhpc & hpcx-mpi)
+```
+
 ## References
 - [NVIDIA HPC SDK 25.11 release notes](https://docs.nvidia.com/hpc-sdk/archive/25.11/pdf/hpc-sdk2511rn.pdf)
 - [Spack environments](https://spack.readthedocs.io/en/latest/environments.html)
