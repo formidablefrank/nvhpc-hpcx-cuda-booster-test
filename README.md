@@ -35,7 +35,7 @@ The scripts assume the following software stack built using Spack:
 Dependency graph:
 
 ```
-+----------------------------+
+                        +----------------------------+
                         |   nvhpc@25.11 (Compiler)   |
                         +--------------+-------------+
                                        |
