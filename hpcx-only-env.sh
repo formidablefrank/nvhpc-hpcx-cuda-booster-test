@@ -3,14 +3,21 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 env_dir="${repo_root}/env-nvhpc-hpcx"
-export SPACK_USER_CACHE_PATH="/leonardo_scratch/large/userexternal/jrayo000/spack-user-cache"
-export TMPDIR="${TMPDIR:-/leonardo_scratch/large/userexternal/jrayo000/tmp}"
+share_root="/leonardo_work/ICT26_MHPC_0/franco"
+spack_user_cache_path="${share_root}/spack-user-cache"
+spack_user_config_path="${share_root}/spack-user-config"
+
+export SPACK_USER_CACHE_PATH="${spack_user_cache_path}"
+export SPACK_USER_CONFIG_PATH="${spack_user_config_path}"
+export TMPDIR="${TMPDIR:-${share_root}/tmp}"
 
 mkdir -p \
   "${SPACK_USER_CACHE_PATH}" \
+  "${SPACK_USER_CONFIG_PATH}" \
   "${TMPDIR}" \
-  /leonardo_scratch/large/userexternal/jrayo000/spack-source-cache \
-  /leonardo_scratch/large/userexternal/jrayo000/spack-binary-index
+  "${share_root}/spack-source-cache" \
+  "${share_root}/spack-binary-index" \
+  "${share_root}/spack-bootstrap"
 
 prepend_path() {
   local var_name="$1"
@@ -63,8 +70,10 @@ module purge
 module load spack
 set -u
 
-export SPACK_USER_CONFIG_PATH="${SPACK_USER_CACHE_PATH}"
-export SPACK_USER_CACHE_PATH="${SPACK_USER_CACHE_PATH}"
+export SPACK_USER_CACHE_PATH="${spack_user_cache_path}"
+export SPACK_USER_CONFIG_PATH="${spack_user_config_path}"
+
+spack bootstrap root "${share_root}/spack-bootstrap" >/dev/null
 
 module use /leonardo/prod/spack/06/install/0.22/linux-rhel8-icelake/gcc-8.5.0/nvhpc-25.11-ayzlbce6ohpmv72ncfv4ogitmppp2usq/modulefiles
 module load nvhpc-hpcx-2.20-cuda12/25.11

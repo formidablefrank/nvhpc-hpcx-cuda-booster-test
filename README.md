@@ -1,10 +1,10 @@
 # CUDA-Aware MPI test application for Leonardo Booster nodes
 
-This repository contains benchmarking experiments for Leonardo Booster nodes. It runs distributed matrix multiplication in Fortran using NVHPC, OpenACC/stdpar, CUDA-aware communication through HPC-X MPI, and parallel output in HDF5.
+This repository contains benchmarking experiments for Leonardo Booster nodes. It runs distributed matrix multiplication in Fortran using NVHPC, OpenACC/stdpar, CUDA-aware communication through HPC-X MPI, and parallel HDF5 output and readback.
 
 ## Contents
 
-- `dist_matmul.f90` - distributed matrix multiplication benchmark program. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, and writes an HDF5 file in parallel. It also prints timing for initialization, computation, communication, I/O, error validation, and total runtime.
+- `dist_matmul.f90` - distributed matrix multiplication benchmark program. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, writes an HDF5 file in parallel, and reads the written hyperslab back collectively. It also prints timing for initialization, computation, communication, I/O, error validation, and total runtime. The file is written to `$FAST` filesystem of Leonardo.
 - `job_dist_matmul.sh` - Slurm batch script for building `dist_matmul.f90` and running scaling tests on 1, 2, 4, and 8 nodes.
 - `dist_matmul_stdpar.f90` - NVHPC stdpar `do concurrent` version of the benchmark. It uses separate-memory stdpar offload instead of explicit OpenACC data regions and `host_data` device pointers.
 - `job_dist_matmul_stdpar.sh` - Slurm batch script for building and running the stdpar version.
@@ -192,22 +192,37 @@ C_dist_stdpar_baseline_8nodes_32ranks.h5
 C_dist_stdpar_tuned_8nodes_32ranks.h5
 ```
 
+After the parallel write, each rank reopens the file with the MPI-IO HDF5 file access property list and collectively reads back the same hyperslab it wrote. The readback check compares the file data against the rank-local `C_loc` buffer:
+
+```text
+READBACK max_abs_error=<s>
+TIMING_IO ranks=<n> parallel_write_s=<s> parallel_read_s=<s>
+```
+
 The timing line has this format:
 
 ```text
-TIMING ranks=<n> init_s=<s> computation_s=<s> communication_s=<s> io_s=<s> validation_s=<s> total_s=<s>
+TIMING ranks=<n> init_s=<s> computation_s=<s> communication_s=<s> io_s=<s> io_write_s=<s> io_read_s=<s> validation_s=<s> total_s=<s>
 ```
 
-Timings are obtained using `MPI_MAX` reduction across ranks, so each value comes from the slowest rank for that component. Communication time includes MPI post time and MPI wait time. Because communication is overlapped with GPU computation, the reported communication component is the exposed communication cost, not a fully non-overlapped transfer time.
+Timings are obtained using `MPI_MAX` reduction across ranks, so each value comes from the slowest rank for that component. Communication time includes MPI post time and MPI wait time. Because communication is overlapped with GPU computation, the reported communication component is the exposed communication cost, not a fully non-overlapped transfer time. The `io_s` value includes both the parallel write and the parallel readback; `io_write_s` and `io_read_s` report those phases separately. The `TIMING_IO` line repeats the same split with explicit parallel read/write labels for easier parsing.
 
 ## Results
 
-Plots and parsed CSV files are available under `plots/`:
+Plots and parsed CSV files are available under `plots/` and are generated from `logs/slurm-matmul-44177268.out`:
 
-- `plots/timing_components_baseline_vs_tuned.png` - runtime comparison for initialization, computation, communication, I/O, validation, and total time.
-- `plots/timing_total_baseline_vs_tuned.png` - total runtime plus  speedup after tuning.
-- `plots/timing_baseline_vs_tuned.csv` - data on component timings.
-- `plots/timing_total_summary.csv` - data on total runtime and speedup.
+- `plots/generate_timing_plots.py` - parser and plot generator for Slurm timing logs.
+- `plots/timing_components_baseline_vs_tuned.png` - runtime comparison for initialization, computation, communication, parallel HDF5 write, parallel HDF5 readback, validation, and total time.
+- `plots/timing_total_baseline_vs_tuned.png` - total runtime plus speedup after tuning.
+- `plots/timing_baseline_vs_tuned.csv` - parsed component timings, validation errors, and readback errors.
+- `plots/timing_total_summary.csv` - total runtime, speedup, and I/O deltas.
+
+Regenerate the CSVs and plots with:
+
+```bash
+conda activate rl-gpu
+python plots/generate_timing_plots.py logs/slurm-matmul-44177268.out
+```
 
 Total runtime from this run:
 
@@ -215,26 +230,39 @@ Total runtime from this run:
 
 | Nodes | Ranks | Baseline total (s) | Tuned total (s) | Baseline / tuned |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 4 | 59.154 | 55.188 | 1.07x |
-| 2 | 8 | 36.268 | 32.103 | 1.13x |
-| 4 | 16 | 20.166 | 17.932 | 1.12x |
-| 8 | 32 | 11.478 | 11.727 | 0.98x |
+| 1 | 4 | 66.069 | 64.925 | 1.02x |
+| 2 | 8 | 43.949 | 57.942 | 0.76x |
+| 4 | 16 | 29.205 | 32.180 | 0.91x |
+| 8 | 32 | 16.031 | 16.414 | 0.98x |
 
-In the analyzed run, the tuned configuration improves total time on 1, 2, and 4 nodes, with the strongest gain around 2-4 nodes.
+The latest run shows that computation scaling remains strong and essentially independent of the tuning mode. Baseline computation time drops from 47.61 s on 1 node to 23.84 s, 11.93 s, and 5.96 s on 2, 4, and 8 nodes. Tuned computation differs by less than a few milliseconds at every scale, so the tuning choices are not affecting GPU kernel throughput.
+
+The total-runtime difference is dominated by HDF5 I/O and, in this run, mostly by write behavior. Tuned is slightly faster on 1 node because parallel write time is lower. At 2 nodes, tuned write time jumps to 26.91 s versus 12.84 s baseline, causing a large tuned slowdown. At 4 nodes, tuned write and read are both slower. At 8 nodes, tuned is only slightly slower overall, with a small write penalty partly offset by slightly faster readback.
+
+| Nodes | Baseline write (s) | Tuned write (s) | Baseline read (s) | Tuned read (s) | I/O delta baseline - tuned (s) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 8.969 | 7.431 | 2.490 | 2.919 | 1.116 |
+| 2 | 12.841 | 26.908 | 3.031 | 2.920 | -13.959 |
+| 4 | 12.978 | 14.852 | 1.754 | 2.717 | -2.838 |
+| 8 | 6.556 | 6.947 | 1.890 | 1.770 | -0.273 |
 
 ![timing](plots/timing_components_baseline_vs_tuned.png)
 
- The dominant improvement is I/O time: tuned I/O drops from 9.06 s to 5.15 s on 1 node, from 10.59 s to 6.35 s on 2 nodes, and from 6.87 s to 4.57 s on 4 nodes. Computation time is essentially unchanged between baseline and tuned runs because both modes execute the same GPU kernels with the same rank count and problem decomposition.
+This run is an important contrast with the previous one: the large 2-node tuned regression is a parallel HDF5 write regression, not a compute or readback issue. Communication is also somewhat higher in tuned mode at multi-node scale, but the exposed communication increase is much smaller than the I/O change. For example, at 2 nodes tuned communication is only about 0.084 s higher, while tuned write time is about 14.07 s higher.
 
-At 8 nodes, tuned total time is slightly worse in this sample. The main reason is that tuned I/O is not better at this scale in the latest run (4.57 s tuned vs 4.39 s baseline), while exposed communication is also higher (0.709 s tuned vs 0.617 s baseline). This difference is small compared with the full runtime and should be interpreted as one-run variability unless repeated measurements show the same trend.
+All readbacks report `READBACK max_abs_error=0`, so the parallel HDF5 read path is returning exactly the same local values that were written. Relative validation errors are around `1e-14` to `1e-13`, which is consistent with double-precision roundoff for results with magnitude near `1e18`. The nonzero absolute errors are expected at this scale and should be judged using `max_rel_error`, not only `max_abs_error`.
 
-The communication component is not a pure network bandwidth measurement. The code calls nonblocking MPI receive and send, launches the OpenACC kernel, waits for the GPU computation, and then waits for nonblocking MPI calls to finish. Therefore `communication_s` mostly measures nonblocking MPI call plus wait time after computation overlap. A tuned run can show slightly higher communication time while still being faster overall if computation finishes earlier. For a clean communication-only comparison, you add a separate benchmark that times the ring exchange without the matrix kernel and HDF5 write, or disable overlap by waiting for MPI before launching computation.
+The tuned configuration can make parallel HDF5 read or write slower even though it is useful for GPU-aware MPI traffic. HDF5 collective I/O is not just a direct GPU-to-HCA transfer. In this program the file operations use host-resident `C_loc` after `!$acc update self(C_loc)`, and HDF5 then uses MPI-IO collective algorithms to aggregate file accesses. Those algorithms are sensitive to rank order, aggregator selection, file-system lock/stripe placement, and the Open MPI I/O component in use. Pinning each rank to a specific CPU/GPU/HCA path can improve communication locality while also changing which ranks become slow I/O participants or aggregators. Because collective HDF5 calls complete at the pace of the slowest participating ranks, a few slower ranks can increase the reported maximum read or write time.
 
-Relative errors are around `1e-14` to `1e-13`, which is consistent with double-precision roundoff for results with magnitude near `1e18`. The nonzero absolute errors are expected at this scale and should be judged using `max_rel_error`, not only `max_abs_error`.
+The read path is especially sensitive to file-system cache state and collective buffering choices. A tuned run may read from the same file correctly but still be slower if its rank/HCA placement creates less favorable access concurrency, if the MPI-IO aggregators are mapped onto ranks with poorer file-system locality, or if the previous write left data in a cache/layout state that benefits the baseline read more than the tuned read. The current data shows this variability clearly: in `44177268`, tuned readback is slightly faster at 2 and 8 nodes but slower at 1 and 4 nodes, while tuned write is much worse at 2 nodes.
+
+The communication component is also not a pure network bandwidth measurement. The code posts nonblocking MPI receive/send, launches the OpenACC kernel, waits for GPU computation, and then waits for the nonblocking MPI calls. Therefore `communication_s` mostly measures MPI post overhead plus any exposed wait after compute overlap. Tuned mode pins ranks to cores and maps each local rank to a specific HCA through `UCX_NET_DEVICES`. That can reduce ambiguity, but it can also remove UCX's ability to choose another rail dynamically, expose imbalance if one HCA path is busier, and add overhead from stricter endpoint/device selection. Since the compute phase is nearly identical between modes, even a small change in when the GPU kernel finishes can expose more of the pending MPI wait. In this run, tuned communication is higher at 2, 4, and 8 nodes, but the increase is small compared with the HDF5 I/O swings.
+
+For follow-up measurements, repeat the 2-, 4-, and 8-node points several times and alternate baseline/tuned order. If the tuned I/O penalty persists, isolate HDF5 behavior separately from GPU/HCA placement by comparing OMPIO versus ROMIO, collective versus independent dataset transfer, and filesystem striping for the output directory. Also test tuned CPU/GPU binding without forcing per-rank `UCX_NET_DEVICES`; that separates core/NUMA effects from rail/HCA selection. The current data is enough to say that tuned mapping is not reliably better for the HDF5 write/read phase on the fast scratch target used in this run.
 
 ## Notes
 
-- The benchmark currently uses `N = 65536` in `dist_matmul.f90` with error validation disabled. Memory use is high and the Slurm scripts request exclusive GPU nodes.
+- The benchmark currently uses `N = 32768` in `dist_matmul.f90` and reports distributed validation plus HDF5 readback checks. Memory use is high and the Slurm scripts request exclusive GPU nodes.
 - `N` must be divisible by the MPI world size.
 - The OpenACC benchmark uses `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for explicit device-buffer communication.
 - The stdpar benchmark uses NVHPC separate-memory behavior so MPI/HDF5 operate on host arrays while stdpar kernels use compiler-managed device copies. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.

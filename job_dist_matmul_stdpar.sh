@@ -32,28 +32,26 @@ echo "Compiling stdpar variant..."
   -lhdf5_fortran -lhdf5
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export UCX_LOG_LEVEL="${UCX_LOG_LEVEL:-warn}"
-export UCX_TLS="${UCX_TLS:-rc,cuda_copy,cuda_ipc,sm,self}"
-export OMPI_MCA_pml="${OMPI_MCA_pml:-ucx}"
-export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
-export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
-export UCX_RNDV_THRESH="${UCX_RNDV_THRESH:-8192}"
-
-# place 4 ranks per node and give each rank 8 processing elements
-# then binds those ranks to cores 
-tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8)
-if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
-  tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
-fi
 
 run_case() {
   local mode="$1"
   local nodes="$2"
   local ranks="$3"
-  local output_file="C_dist_stdpar_${mode}_${nodes}nodes_${ranks}ranks.h5"
+  local output_file="${FAST}/franco/tmp/C_dist_stdpar_${mode}_${nodes}nodes_${ranks}ranks.h5"
 
   echo "=== Stdpar scaling run: mode=${mode} nodes=${nodes} ranks=${ranks} output=${output_file} ==="
   if [[ "${mode}" == "tuned" ]]; then
+    export OMPI_MCA_pml="${OMPI_MCA_pml:-ucx}"
+    export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
+    export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
+
+    # place 4 ranks per node and give each rank 8 processing elements
+    # then binds those ranks to cores 
+    tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8)
+    if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
+      tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
+    fi
+
     MATMUL_BINDER_MODE=tuned \
       "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" "${tuned_mpirun_args[@]}" \
         numactl --localalloc \
@@ -61,12 +59,11 @@ run_case() {
         "${repo_root}/dist_matmul_stdpar.x" \
         "${output_file}"
   else
-    env -u UCX_NET_DEVICES -u UCX_RNDV_THRESH \
-      MATMUL_BINDER_MODE=baseline \
-      "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
-        "${repo_root}/binder.sh" \
-        "${repo_root}/dist_matmul_stdpar.x" \
-        "${output_file}"
+    MATMUL_BINDER_MODE=baseline \
+    "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
+      "${repo_root}/binder.sh" \
+      "${repo_root}/dist_matmul_stdpar.x" \
+      "${output_file}"
   fi
 }
 

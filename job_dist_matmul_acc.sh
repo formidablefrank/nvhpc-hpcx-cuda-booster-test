@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dist-matmul-f90
+#SBATCH --job-name=dist-matmul-acc
 #SBATCH --hint=nomultithread
 #SBATCH --time=00:30:00
 #SBATCH --nodes=8
@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:4
 #SBATCH --mem=490000MB
-##SBATCH --mem-bind=local             equivalent to numactl --localalloc in the job steps below
+##SBATCH --mem-bind=local             equivalent to numactl --localalloc in the mpirun below
 ##SBATCH --distribution=block:block   equivalent to --map-by ppr:4:node in the mpirun below
 #SBATCH --exclusive
 #SBATCH --account=ICT26_MHPC_0
@@ -25,48 +25,44 @@ mkdir -p logs
 source "${repo_root}/hpcx-only-env.sh"
 
 echo "Compiling..."
-"${HPCX_MPI_HOME}/bin/mpif90" -O1 -acc -gpu=cc80 -Minfo=accel \
+"${HPCX_MPI_HOME}/bin/mpif90" -O3 -acc -gpu=cc80 -Minfo=accel \
   -I"${HDF5_HOME}/include" \
   -L"${HDF5_HOME}/lib" \
-  dist_matmul.f90 -o dist_matmul.x \
+  dist_matmul_acc.f90 -o dist_matmul_acc.x \
   -lhdf5_fortran -lhdf5
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export UCX_LOG_LEVEL="${UCX_LOG_LEVEL:-warn}"
-export UCX_TLS="${UCX_TLS:-rc,cuda_copy,cuda_ipc,sm,self}"
-export OMPI_MCA_pml="${OMPI_MCA_pml:-ucx}"
-export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
-export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
-export UCX_RNDV_THRESH="${UCX_RNDV_THRESH:-8192}"
-
-# place 4 ranks per node and give each rank 8 processing elements
-# then binds those ranks to cores 
-tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8)
-if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
-  tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
-fi
 
 run_case() {
   local mode="$1"
   local nodes="$2"
   local ranks="$3"
-  local output_file="C_dist_${mode}_${nodes}nodes_${ranks}ranks.h5"
+  local output_file="${FAST}/franco/tmp/C_dist_acc_${mode}_${nodes}nodes_${ranks}ranks.h5"
 
   echo "=== Scaling run: mode=${mode} nodes=${nodes} ranks=${ranks} output=${output_file} ==="
   if [[ "${mode}" == "tuned" ]]; then
+    export OMPI_MCA_pml="${OMPI_MCA_pml:-ucx}"
+    export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
+    export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
+
+    # place 4 ranks per node and give each rank 8 processing elements
+    # then binds those ranks to cores 
+    tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8 numactl --localalloc)
+    if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
+      tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
+    fi
+    
     MATMUL_BINDER_MODE=tuned \
-      "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" "${tuned_mpirun_args[@]}" \
-        numactl --localalloc \
+      "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}"  "${tuned_mpirun_args[@]}" \
         "${repo_root}/binder.sh" \
-        "${repo_root}/dist_matmul.x" \
+        "${repo_root}/dist_matmul_acc.x" \
         "${output_file}"
   else
-    env -u UCX_NET_DEVICES -u UCX_RNDV_THRESH \
-      MATMUL_BINDER_MODE=baseline \
-      "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
-        "${repo_root}/binder.sh" \
-        "${repo_root}/dist_matmul.x" \
-        "${output_file}"
+    MATMUL_BINDER_MODE=baseline \
+    "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
+      "${repo_root}/binder.sh" \
+      "${repo_root}/dist_matmul_acc.x" \
+      "${output_file}"
   fi
 }
 

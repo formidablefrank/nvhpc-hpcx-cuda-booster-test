@@ -2,8 +2,8 @@
 set -euo pipefail
 
 local_rank="${OMPI_COMM_WORLD_LOCAL_RANK:?OMPI_COMM_WORLD_LOCAL_RANK is not set}"
-global_rank="${OMPI_COMM_WORLD_RANK:-unknown}"
-world_size="${OMPI_COMM_WORLD_SIZE:-unknown}"
+# global_rank="${OMPI_COMM_WORLD_RANK:-unknown}"
+# world_size="${OMPI_COMM_WORLD_SIZE:-unknown}"
 binder_mode="${MATMUL_BINDER_MODE:-tuned}"
 
 case $(( local_rank )) in
@@ -14,6 +14,9 @@ case $(( local_rank )) in
 esac
 
 if [[ "${binder_mode}" == "tuned" ]]; then
+    export UCX_LOG_LEVEL="${UCX_LOG_LEVEL:-warn}"
+    export UCX_RNDV_THRESH="${UCX_RNDV_THRESH:-8192}"
+    export UCX_TLS="${UCX_TLS:-rc,cuda_copy,cuda_ipc,sm,self}"
     export UCX_NET_DEVICES="${ucx_net_device}"
     echo "Mode tuned: local rank ${local_rank} using GPU ${CUDA_VISIBLE_DEVICES} and ${UCX_NET_DEVICES}"
 else

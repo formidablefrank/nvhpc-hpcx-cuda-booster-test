@@ -1,23 +1,25 @@
 spack:
-  view: false
   config:
     install_tree:
-      root: /leonardo_scratch/large/userexternal/jrayo000/spack-install/env-nvhpc-hpcx
-    source_cache: /leonardo_scratch/large/userexternal/jrayo000/spack-source-cache
-    binary_index_root: /leonardo_scratch/large/userexternal/jrayo000/spack-binary-index
+      root: /leonardo_work/ICT26_MHPC_0/franco/spack-install/env-nvhpc-hpcx
+    source_cache: /leonardo_work/ICT26_MHPC_0/franco/spack-source-cache
+    binary_index_root: /leonardo_work/ICT26_MHPC_0/franco/spack-binary-index
     build_stage:
-    - /leonardo_scratch/large/userexternal/jrayo000/spack-stage
+    - /leonardo_work/ICT26_MHPC_0/franco/spack-stage
+
   concretizer:
     unify: when_possible
     reuse: false
+
   specs:
-  - cuda@12.2.2
-  - nvhpc@25.11 ~mpi +blas +lapack default_cuda=12.2
-  - nccl@2.22.3-1 +cuda cuda_arch=80 %nvhpc@25.11 ^cuda@12.2.2
+  - cuda@12.2.2 %nvhpc@25.11
+  - nvhpc@25.11
+  - nccl@2.22.3-1 %nvhpc@25.11 cuda_arch=80 ^cuda@12.2.2
   - cudnn@9.2.0.82-12 %nvhpc@25.11 ^cuda@12.2.2
-  - hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20
-  - netcdf-fortran@4.6.1 %nvhpc@25.11 ^netcdf-c@4.9.2 +mpi ~blosc ~szip ~zstd %nvhpc@25.11 ^hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20
-  - parallel-netcdf@1.12.3 +cxx +fortran %nvhpc@25.11 ^hpcx-mpi@2.20
+  - hdf5@1.14.3 %nvhpc@25.11
+  - netcdf-fortran@4.6.1 %nvhpc@25.11 ^netcdf-c@4.9.2 %nvhpc@25.11
+  - parallel-netcdf@1.12.3 %nvhpc@25.11
+
   packages:
     all:
       target: [icelake]
