@@ -33,6 +33,9 @@ echo "Compiling..."
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
+LOCAL_RANK=${SLURM_LOCALID:-${OMPI_COMM_WORLD_LOCAL_RANK:-}}
+GLOBAL_RANK=${SLURM_PROCID:-${OMPI_COMM_WORLD_RANK:-0}}
+
 run_case() {
   local mode="$1"
   local nodes="$2"
@@ -41,26 +44,42 @@ run_case() {
 
   echo "=== Scaling run: mode=${mode} nodes=${nodes} ranks=${ranks} output=${output_file} ==="
   if [[ "${mode}" == "tuned" ]]; then
+    # MPI and PMIX configuration
     export OMPI_MCA_pml="${OMPI_MCA_pml:-ucx}"
     export OMPI_MCA_osc="${OMPI_MCA_osc:-ucx}"
     export PMIX_MCA_gds="${PMIX_MCA_gds:-hash}"
 
+    # NUMA and memory binding
     # place 4 ranks per node and give each rank 8 processing elements
-    # then binds those ranks to cores 
+    # then binds those ranks to cores
     tuned_mpirun_args=(--bind-to core --map-by ppr:4:node:PE=8 numactl --localalloc)
     if [[ "${REPORT_BINDINGS:-0}" == "1" ]]; then
       tuned_mpirun_args=(--report-bindings "${tuned_mpirun_args[@]}")
     fi
+
+    # GPU and NIC/UCX binding based on local rank
+    case $(( LOCAL_RANK )) in
+        0) export CUDA_VISIBLE_DEVICES=0; ucx_net_device=mlx5_0:1 ;;
+        1) export CUDA_VISIBLE_DEVICES=1; ucx_net_device=mlx5_1:1 ;;
+        2) export CUDA_VISIBLE_DEVICES=2; ucx_net_device=mlx5_2:1 ;;
+        3) export CUDA_VISIBLE_DEVICES=3; ucx_net_device=mlx5_3:1 ;;
+    esac
+    export ACC_DEVICE_TYPE=nvidia
+    export ACC_DEVICE_NUM=0
+    export UCX_LOG_LEVEL="${UCX_LOG_LEVEL:-warn}"
+    export UCX_RNDV_THRESH=${UCX_RNDV_THRESH:-8192}
+    export UCX_RNDV_FRAG_MEM_TYPE=${UCX_RNDV_FRAG_MEM_TYPE:-cuda}
+    export UCX_RNDV_FRAG_SIZE=${UCX_RNDV_FRAG_SIZE:-cuda:32M}
+    export UCX_TLS="${UCX_TLS:-rc,cuda_copy,cuda_ipc,sm,self}"
+    export UCX_NET_DEVICES="${ucx_net_device}"
+    echo "Mode tuned: local rank ${LOCAL_RANK} using GPU ${CUDA_VISIBLE_DEVICES} and ${UCX_NET_DEVICES}"
     
-    MATMUL_BINDER_MODE=tuned \
-      "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}"  "${tuned_mpirun_args[@]}" \
-        "${repo_root}/binder.sh" \
-        "${repo_root}/dist_matmul_acc.x" \
-        "${output_file}"
+    "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" "${tuned_mpirun_args[@]}" \
+      "${repo_root}/dist_matmul_acc.x" \
+      "${output_file}"
   else
-    MATMUL_BINDER_MODE=baseline \
+    echo "Mode baseline: local rank ${LOCAL_RANK} using GPU ${CUDA_VISIBLE_DEVICES}"
     "${HPCX_MPI_HOME}/bin/mpirun" -np "${ranks}" \
-      "${repo_root}/binder.sh" \
       "${repo_root}/dist_matmul_acc.x" \
       "${output_file}"
   fi
