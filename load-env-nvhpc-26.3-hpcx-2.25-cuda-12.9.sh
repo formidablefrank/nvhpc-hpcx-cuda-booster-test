@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-env_dir="${repo_root}/env-nvhpc-hpcx"
+env_dir="${repo_root}/env-nvhpc-26.3-hpcx-2.25-cuda-12.9"
 share_root="/leonardo_work/ICT26_MHPC_0/franco"
 spack_user_cache_path="${share_root}/spack-user-cache"
 spack_user_config_path="${share_root}/spack-user-config"
@@ -75,32 +75,41 @@ export SPACK_USER_CONFIG_PATH="${spack_user_config_path}"
 
 spack bootstrap root "${share_root}/spack-bootstrap" >/dev/null
 
-module use /leonardo/prod/spack/06/install/0.22/linux-rhel8-icelake/gcc-8.5.0/nvhpc-25.11-ayzlbce6ohpmv72ncfv4ogitmppp2usq/modulefiles
-module load nvhpc-hpcx-2.20-cuda12/25.11
-export HPCX_MPI_HOME="${HPCX_HOME}/ompi"
-
-export CUDA_HOME="$(prefix_for "cuda@12.2.2")"
+export CUDA_HOME="$(prefix_for "cuda@12.9 %nvhpc@26.3")"
 export NVHPC_CUDA_HOME="${CUDA_HOME}"
 export NVCOMPILER_CUDA_HOME="${CUDA_HOME}"
-export NVHPC_HOME="$(prefix_for "nvhpc@25.11 ~mpi +blas +lapack default_cuda=12.2")"
-export CUDNN_HOME="$(prefix_for "cudnn@9.2.0.82-12 %nvhpc@25.11 ^cuda@12.2.2")"
-export HDF5_HOME="$(prefix_for "hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20")"
-export PNETCDF_HOME="$(prefix_for "parallel-netcdf@1.12.3 +cxx +fortran %nvhpc@25.11 ^hpcx-mpi@2.20")"
-export NETCDF_C_HOME="$(prefix_for "netcdf-c@4.9.2 +mpi ~blosc ~szip ~zstd %nvhpc@25.11 ^hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20")"
-export NETCDF_FORTRAN_HOME="$(prefix_for "netcdf-fortran@4.6.1 %nvhpc@25.11 ^netcdf-c@4.9.2 +mpi ~blosc ~szip ~zstd %nvhpc@25.11 ^hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20")"
+export NVHPC_HOME="$(prefix_for "nvhpc@26.3 %gcc@12.2.0")"
+export NVHPC_VERSION_HOME="${NVHPC_HOME}/Linux_x86_64/26.3"
+export HPCX_MPI_HOME="$(prefix_for "hpcx-mpi@2.25.1")"
+export HPCX_HOME="${HPCX_MPI_HOME%/ompi}"
+export BINUTILS_HOME="$(prefix_for "binutils@2.42 %gcc@12.2.0")"
+export NCCL_HOME="$(prefix_for "nccl@2.22.3-1 %nvhpc@26.3 cuda_arch=80 ^cuda@12.9")"
+export GDRCOPY_HOME="$(prefix_for "gdrcopy@2.5.1 %nvhpc@26.3 +cuda cuda_arch=80 ^cuda@12.9")"
+export CUDNN_HOME="$(prefix_for "cudnn@9.23.0.39-12 %nvhpc@26.3 ^cuda@12.9")"
+export HDF5_HOME="$(prefix_for "hdf5@1.14.3 %nvhpc@26.3")"
+export PNETCDF_HOME="$(prefix_for "parallel-netcdf@1.12.3 %nvhpc@26.3")"
+export NETCDF_C_HOME="$(prefix_for "netcdf-c@4.9.2 %nvhpc@26.3")"
+export NETCDF_FORTRAN_HOME="$(prefix_for "netcdf-fortran@4.6.1 %nvhpc@26.3")"
 
-add_prefix "cuda@12.2.2"
-add_prefix "nvhpc@25.11 ~mpi +blas +lapack default_cuda=12.2"
-add_prefix "nccl@2.22.3-1 +cuda cuda_arch=80 %nvhpc@25.11 ^cuda@12.2.2"
-add_prefix "cudnn@9.2.0.82-12 %nvhpc@25.11 ^cuda@12.2.2"
-add_prefix "hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20"
-add_prefix "parallel-netcdf@1.12.3 +cxx +fortran %nvhpc@25.11 ^hpcx-mpi@2.20"
-add_prefix "netcdf-c@4.9.2 +mpi ~blosc ~szip ~zstd %nvhpc@25.11 ^hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20"
-add_prefix "netcdf-fortran@4.6.1 %nvhpc@25.11 ^netcdf-c@4.9.2 +mpi ~blosc ~szip ~zstd %nvhpc@25.11 ^hdf5@1.14.3 +mpi +fortran +hl %nvhpc@25.11 ^hpcx-mpi@2.20"
+prepend_path PATH "${NVHPC_VERSION_HOME}/compilers/bin"
+prepend_path MANPATH "${NVHPC_VERSION_HOME}/compilers/man"
+prepend_path LIBRARY_PATH "${NVHPC_VERSION_HOME}/compilers/lib"
+prepend_path LD_LIBRARY_PATH "${NVHPC_VERSION_HOME}/compilers/lib"
+
+export CC="${NVHPC_VERSION_HOME}/compilers/bin/nvc"
+export CXX="${NVHPC_VERSION_HOME}/compilers/bin/nvc++"
+export F77="${NVHPC_VERSION_HOME}/compilers/bin/nvfortran"
+export FC="${NVHPC_VERSION_HOME}/compilers/bin/nvfortran"
+
+add_prefix "cuda@12.9 %nvhpc@26.3"
+add_prefix "hpcx-mpi@2.25.1"
+add_prefix "binutils@2.42 %gcc@12.2.0"
+add_prefix "nccl@2.22.3-1 %nvhpc@26.3 cuda_arch=80 ^cuda@12.9"
+add_prefix "gdrcopy@2.5.1 %nvhpc@26.3 +cuda cuda_arch=80 ^cuda@12.9"
+add_prefix "cudnn@9.23.0.39-12 %nvhpc@26.3 ^cuda@12.9"
+add_prefix "hdf5@1.14.3 %nvhpc@26.3"
+add_prefix "parallel-netcdf@1.12.3 %nvhpc@26.3"
+add_prefix "netcdf-c@4.9.2 %nvhpc@26.3"
+add_prefix "netcdf-fortran@4.6.1 %nvhpc@26.3"
 
 export CUDAARCHS=80
-
-# export NCCL_DEBUG=INFO
-# export NCCL_DEBUG_SUBSYS=ALL
-# export NCCL_DEBUG_FILENAME="logs/hpcx220-${SLURM_JOB_ID:-nojid}-${world_size}ranks-r${global_rank}.log"
-# export NCCL_TOPO_DUMP_FILE="${repo_root}/topo.xml"

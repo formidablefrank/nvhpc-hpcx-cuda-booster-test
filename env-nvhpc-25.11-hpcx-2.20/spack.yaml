@@ -12,12 +12,14 @@ spack:
     reuse: false
 
   specs:
-  - cuda@12.2.2 %nvhpc@25.11
   - nvhpc@25.11
-  - nccl@2.22.3-1 %nvhpc@25.11 cuda_arch=80 ^cuda@12.2.2
-  - cudnn@9.2.0.82-12 %nvhpc@25.11 ^cuda@12.2.2
+  - cuda@12.2.2 %nvhpc@25.11
+  - nccl@2.22.3-1 %nvhpc@25.11 cuda_arch=80
+  - cudnn@9.2.0.82-12 %nvhpc@25.11
+  - binutils@2.42 %gcc@12.2.0
   - hdf5@1.14.3 %nvhpc@25.11
-  - netcdf-fortran@4.6.1 %nvhpc@25.11 ^netcdf-c@4.9.2 %nvhpc@25.11
+  - netcdf-c@4.9.2 %nvhpc@25.11
+  - netcdf-fortran@4.6.1 %nvhpc@25.11
   - parallel-netcdf@1.12.3 %nvhpc@25.11
 
   packages:
@@ -25,13 +27,6 @@ spack:
       target: [icelake]
       providers:
         mpi: [hpcx-mpi]
-    hpcx-mpi:
-      externals:
-      - spec: hpcx-mpi@2.20
-        prefix: /leonardo/prod/spack/06/install/0.22/linux-rhel8-icelake/gcc-8.5.0/nvhpc-25.11-ayzlbce6ohpmv72ncfv4ogitmppp2usq/Linux_x86_64/25.11/comm_libs/12.9/hpcx/hpcx-2.20/ompi
-      buildable: false
-    cuda:
-      buildable: true
     nvhpc:
       externals:
       - spec: nvhpc@25.11 ~mpi +blas +lapack default_cuda=12.2
@@ -39,10 +34,22 @@ spack:
         modules:
         - nvhpc/25.11
       buildable: false
+    hpcx-mpi:
+      externals:
+      - spec: hpcx-mpi@2.20
+        prefix: /leonardo/prod/spack/06/install/0.22/linux-rhel8-icelake/gcc-8.5.0/nvhpc-25.11-ayzlbce6ohpmv72ncfv4ogitmppp2usq/Linux_x86_64/25.11/comm_libs/12.9/hpcx/hpcx-2.20/ompi
+      buildable: false
+    cuda:
+      buildable: true
     nccl:
       buildable: true
     cudnn:
       buildable: true
+    binutils:
+      buildable: true
+      variants:
+      - +gas
+      - +ld
     hdf5:
       buildable: true
       variants:

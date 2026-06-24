@@ -3,3 +3,4 @@
 .vscode
 **/.spack-env
 logs/
+spack-repo/

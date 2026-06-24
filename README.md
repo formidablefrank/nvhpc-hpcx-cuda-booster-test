@@ -4,25 +4,26 @@ This repository contains benchmarking experiments for Leonardo Booster nodes. It
 
 ## Contents
 
-- `dist_matmul.f90` - distributed matrix multiplication benchmark program. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, writes an HDF5 file in parallel, and reads the written hyperslab back collectively. It also prints timing for initialization, computation, communication, I/O, error validation, and total runtime. The file is written to `$FAST` filesystem of Leonardo.
-- `job_dist_matmul.sh` - Slurm batch script for building `dist_matmul.f90` and running scaling tests on 1, 2, 4, and 8 nodes.
+- `dist_matmul_acc.f90` - distributed matrix multiplication benchmark program. It initializes local matrix blocks, performs a ring exchange of `A` blocks, computes local matrix multiplication on GPUs with OpenACC, validates the local result, writes an HDF5 file in parallel, and reads the written hyperslab back collectively. It also prints timing for initialization, computation, communication, I/O, error validation, and total runtime. The file is written to `$FAST` filesystem of Leonardo.
+- `job_dist_matmul_acc.sh` - Slurm batch script for building `dist_matmul_acc.f90` and running scaling tests on 1, 2, 4, and 8 nodes.
 - `dist_matmul_stdpar.f90` - NVHPC stdpar `do concurrent` version of the benchmark. It uses separate-memory stdpar offload instead of explicit OpenACC data regions and `host_data` device pointers.
 - `job_dist_matmul_stdpar.sh` - Slurm batch script for building and running the stdpar version.
 - `binder.sh` - per-rank GPU and UCX device binding helper. In baseline mode it only assigns one GPU per local rank. In tuned mode it also pins each local rank to a matching UCX network device.
-- `hpcx-only-env.sh` - loads the NVHPC/HPC-X module and exposes the Spack-built CUDA, NCCL, HDF5, NetCDF, and PnetCDF prefixes.
-- `build-hpcx-only-env.sh` - concretizes and installs the Spack environment in `env-nvhpc-hpcx/`.
-- `env-nvhpc-hpcx/spack.yaml` - Spack environment definition.
+- `load-env-nvhpc-26.3-hpcx-2.25-cuda-12.9.sh` - loads the Spack environment and exposes the NVHPC-bundled CUDA/HPC-X prefixes plus NCCL, GDRCopy, cuDNN, HDF5, NetCDF, and PnetCDF.
+- `build-env-nvhpc-26.3-hpcx-2.25-cuda-12.9.sh` - concretizes and installs the Spack environment in `env-nvhpc-26.3-hpcx-2.25-cuda-12.9/`.
+- `env-nvhpc-26.3-hpcx-2.25-cuda-12.9/spack.yaml` - Spack environment definition.
 - `logs/` - Slurm stdout/stderr files.
 
 ## Software Stack
 
-The benchmark assumes the following software stack built using Spack:
+The benchmark assumes the following software stack managed by Spack:
 
-- NVHPC 25.11 (external module)
-- HPC-X 2.20 (external module)
-- CUDA 12.2.2 from the Spack environment (compatible with NVIDIA-SMI 535.274.02, Driver Version: 535.274.02, CUDA Version: 12.2)
-- NCCL and CUDNN
-- HDF5 and NetCDF-C/Fortran and Parallel NetCDF
+- `binutils@2.42 %gcc@12.2.0 +gas +ld`
+- `nvhpc@26.3 %gcc@12.2.0 ~mpi +blas +lapack default_cuda=12.9` as an external compiler package
+- `cuda@12.9 %nvhpc@26.3` from the CUDA toolkit bundled with NVHPC 26.3
+- `hpcx-mpi@2.25.1 %nvhpc@26.3` from the HPC-X MPI bundled with NVHPC 26.3 under the CUDA 12.9 communication libraries
+- `nccl@2.22.3-1`, `gdrcopy@2.5.1`, and `cudnn@9.23.0.39-12` built with `%nvhpc@26.3` and `^cuda@12.9`
+- `hdf5@1.14.3`, `netcdf-c@4.9.2`, `netcdf-fortran@4.6.1`, and `parallel-netcdf@1.12.3` built with `%nvhpc@26.3` and MPI provided by `hpcx-mpi@2.25.1`
 
 <!--The current NetCDF-C build is MPI-enabled but not pthread-backed async:
 
@@ -35,66 +36,75 @@ The benchmark assumes the following software stack built using Spack:
 Dependency graph:
 
 ```
-                        +----------------------------+
-                        |   nvhpc@25.11 (Compiler)   |
-                        +--------------+-------------+
-                                       |
-       +-------------------------------+-------------------------------+
-       |                                                               |
-       |  [ CUDA Branch ]                                              |  [ MPI / NetCDF Branch ]
-       |                                                               |
-       |       +-------------------+                                   |       +--------------------+
-       |       |    cuda@12.2.2    |                                   |       |   hpcx-mpi@2.20    |
-       |       +---------+---------+                                   |       +-------+---+--------+
-       |                 |                                             |               |   |
-       v                 v                                             v               v   v
-     +-------------------+                                           +-------------------+ |
-     |   nccl@2.22.3-1   | <─────────────────────────────────────────|    hdf5@1.14.3    | |
-     +-------------------+                                           +--------+----------+ |
-                                                                              |            |
-     +-------------------+                                                    |            |
-     |  cudnn@9.2.0.82-12| <──────────────────────────────────────────────────┼────────────+
-     +-------------------+                                                    |            |
-                                                                              v            v
-                                                                     +-------------------+ |
-                                                                     |  netcdf-c@4.9.2   | |
-                                                                     +--------+----------+ |
-                                                                              |            |
-                                                                              v            v
-                                                                     +-------------------------+
-                                                                     |  netcdf-fortran@4.6.1   |
-                                                                     +-------------------------+
+                  +----------------------------------------------+
+                  | binutils@2.42 %gcc@12.2.0 +gas +ld          |
+                  +----------------------+-----------------------+
+                                         |
+                  +----------------------+-----------------------+
+                  | nvhpc@26.3 %gcc@12.2.0 default_cuda=12.9    |
+                  | external Spack compiler package              |
+                  +-----------+----------------------+-----------+
+                              |                      |
+                              |                      |
+       +----------------------+-----+        +-------+----------------+
+       | cuda@12.9                 |        | hpcx-mpi@2.25.1        |
+       | bundled with NVHPC 26.3   |        | bundled with NVHPC 26.3|
+       +-----------+---------------+        +---+--------------------+
+                   |                            |
+       +-----------+------------+               |
+       |                        |               |
+       v                        v               v
++-------------------+  +-------------------+  +-------------------+
+| nccl@2.22.3-1     |  | gdrcopy@2.5.1     |  | hdf5@1.14.3      |
+| cuda_arch=80      |  | +cuda cuda_arch=80 |  | +mpi +fortran +hl|
++-------------------+  +---------+---------+  +---------+---------+
+                                |                      |
+                                v                      v
+                       +----------------+     +-------------------+
+                       | check@0.15.2   |     | netcdf-c@4.9.2   |
+                       +----------------+     | +mpi ~blosc       |
+                                              | ~szip ~zstd       |
+                                              +---------+---------+
+                                                        |
+                                                        v
+                                              +-------------------+
+                                              | netcdf-fortran    |
+                                              | @4.6.1            |
+                                              +-------------------+
 
-                                                                     +-------------------------+
-                                                                     | parallel-netcdf@1.12.3  |
-                                                                     +-------------------------+
-                                                                     (Fed by nvhpc & hpcx-mpi)
++---------------------+               +--------------------------+
+| cudnn@9.23.0.39-12  |               | parallel-netcdf@1.12.3  |
+| ^cuda@12.9          |               | +cxx +fortran           |
++---------------------+               +--------------------------+
+        ^                                      ^
+        |                                      |
+        +--------------- cuda@12.9             +--- hpcx-mpi@2.25.1
 ```
 
 
 ## Build the Spack Environment
 
-Replace relevant paths on `env-nvhpc-hpcx/spack.yaml` then run this command once or whenever the YAML file changes:
+Replace relevant paths on `env-nvhpc-26.3-hpcx-2.25-cuda-12.9/spack.yaml` then run this command once or whenever the YAML file changes:
 
 ```bash
-./build-hpcx-only-env.sh
+./build-env-nvhpc-26.3-hpcx-2.25-cuda-12.9.sh
 ```
 
 This installs packages under:
 
 ```text
-/leonardo_scratch/large/userexternal/$USER/spack-install/env-nvhpc-hpcx
+/leonardo_work/ICT26_MHPC_0/franco/spack-install/env-nvhpc-26.3-hpcx-2.25-cuda-12.9
 ```
 
 When debugging, load the environment in an interactive shell:
 
 ```bash
 srun --account $ACCOUNT --partition=boost_usr_prod --qos=boost_qos_dbg --nodes=1 --ntasks=4 --ntasks-per-node=32 --gres=gpu:4 --pty bash
-source ./hpcx-only-env.sh
+source ./load-env-nvhpc-26.3-hpcx-2.25-cuda-12.9.sh
 ...
 ```
 
-That script exports paths such as `CUDA_HOME`, `NVHPC_CUDA_HOME`, `HDF5_HOME`, `NETCDF_C_HOME`, `NETCDF_FORTRAN_HOME`, `PNETCDF_HOME`, and `HPCX_MPI_HOME`.
+That script exports paths such as `CUDA_HOME`, `NVHPC_CUDA_HOME`, `NVCOMPILER_CUDA_HOME`, `NVHPC_HOME`, `HPCX_MPI_HOME`, `NCCL_HOME`, `GDRCOPY_HOME`, `CUDNN_HOME`, `HDF5_HOME`, `NETCDF_C_HOME`, `NETCDF_FORTRAN_HOME`, and `PNETCDF_HOME`.
 
 ## Compilation
 
@@ -104,7 +114,7 @@ The Slurm script compiles the program before running it so you don't need to do 
 "${HPCX_MPI_HOME}/bin/mpif90" -O3 -acc -gpu=cc80 -Minfo=accel \
   -I"${HDF5_HOME}/include" \
   -L"${HDF5_HOME}/lib" \
-  dist_matmul.f90 -o dist_matmul.x \
+  dist_matmul_acc.f90 -o dist_matmul_acc.x \
   -lhdf5_fortran -lhdf5
 ```
 
@@ -125,7 +135,7 @@ This variant uses `do concurrent` for parallel initialization, matrix multiplica
 Submit the Slurm job:
 
 ```bash
-sbatch job_dist_matmul.sh
+sbatch job_dist_matmul_acc.sh
 ```
 
 To run the stdpar variant instead:
@@ -151,13 +161,13 @@ Each point is run in two modes:
 Set `REPORT_BINDINGS=1` to include Open MPI binding reports:
 
 ```bash
-REPORT_BINDINGS=1 sbatch job_dist_matmul.sh
+REPORT_BINDINGS=1 sbatch job_dist_matmul_acc.sh
 ```
 
 Set `UCX_LOG_LEVEL` if UCX logs are needed:
 
 ```bash
-UCX_LOG_LEVEL=info sbatch job_dist_matmul.sh
+UCX_LOG_LEVEL=info sbatch job_dist_matmul_acc.sh
 ```
 
 ## Outputs
@@ -262,15 +272,15 @@ For follow-up measurements, repeat the 2-, 4-, and 8-node points several times a
 
 ## Notes
 
-- The benchmark currently uses `N = 32768` in `dist_matmul.f90` and reports distributed validation plus HDF5 readback checks. Memory use is high and the Slurm scripts request exclusive GPU nodes.
+- The benchmark currently uses `N = 32768` in `dist_matmul_acc.f90` and reports distributed validation plus HDF5 readback checks. Memory use is high and the Slurm scripts request exclusive GPU nodes.
 - `N` must be divisible by the MPI world size.
 - The OpenACC benchmark uses `host_data use_device` around MPI calls, so CUDA-aware MPI support is required for explicit device-buffer communication.
 - The stdpar benchmark uses NVHPC separate-memory behavior so MPI/HDF5 operate on host arrays while stdpar kernels use compiler-managed device copies. If it runs slower or shows different communication behavior, that is expected and should be interpreted as a programming-model comparison.
-- If the NVHPC compiler reports a missing CUDA toolkit, check that `hpcx-only-env.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the Spack CUDA 12.2.2 prefix.
+- If the NVHPC compiler reports a missing CUDA toolkit, check that `load-env-nvhpc-26.3-hpcx-2.25-cuda-12.9.sh` exports `NVHPC_CUDA_HOME` and `NVCOMPILER_CUDA_HOME` to the NVHPC-bundled CUDA 12.9 prefix.
 - The batch scripts set `OMPI_MCA_fcoll=^vulcan` to avoid an Open MPI OMPIO `vulcan` file-collective crash observed during parallel HDF5 writes.
 
 ## References
-- [NVIDIA HPC SDK 25.11 release notes](https://docs.nvidia.com/hpc-sdk/archive/25.11/pdf/hpc-sdk2511rn.pdf)
+- [NVIDIA HPC SDK documentation](https://docs.nvidia.com/hpc-sdk/)
 - [Spack environments](https://spack.readthedocs.io/en/latest/environments.html)
 - [Programming for NVIDIA GPUs](https://www.nas.nasa.gov/hecc/support/kb/programming-for-nvidia-gpus_647.html)
 

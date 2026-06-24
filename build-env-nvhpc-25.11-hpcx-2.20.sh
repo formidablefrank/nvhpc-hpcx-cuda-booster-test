@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-env_dir="${repo_root}/env-nvhpc-hpcx"
+env_dir="${repo_root}/env-nvhpc-25.11-hpcx-2.20"
 share_root="/leonardo_work/ICT26_MHPC_0/franco"
 spack_user_cache_path="${share_root}/spack-user-cache"
 spack_user_config_path="${share_root}/spack-user-config"

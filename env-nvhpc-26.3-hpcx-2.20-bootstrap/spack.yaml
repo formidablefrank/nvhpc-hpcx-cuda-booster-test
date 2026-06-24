@@ -1,0 +1,30 @@
+spack:
+  repos:
+  - ../spack-repo
+
+  config:
+    install_tree:
+      root: /leonardo_work/ICT26_MHPC_0/franco/spack-install/env-nvhpc-26.3-hpcx-2.20
+    source_cache: /leonardo_work/ICT26_MHPC_0/franco/spack-source-cache
+    binary_index_root: /leonardo_work/ICT26_MHPC_0/franco/spack-binary-index
+    build_stage:
+    - /leonardo_work/ICT26_MHPC_0/franco/spack-stage
+
+  concretizer:
+    unify: when_possible
+    reuse: false
+
+  specs:
+  - binutils@2.42 %gcc@12.2.0
+  - nvhpc@26.3 %gcc@12.2.0 ~mpi +blas +lapack default_cuda=12.2
+
+  packages:
+    all:
+      target: [icelake]
+    nvhpc:
+      buildable: true
+    binutils:
+      buildable: true
+      variants:
+      - +gas
+      - +ld
